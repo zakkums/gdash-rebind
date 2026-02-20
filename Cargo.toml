@@ -1,0 +1,25 @@
+[package]
+name = "kmrebind"
+version = "1.0.0"
+edition = "2021"
+description = "Kernel-level keyboard to mouse button remapper for rhythm games"
+license = "MIT"
+authors = ["kmrebind contributors"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+evdev = "0.13"
+nix = { version = "0.29", default-features = false, features = ["fs", "ioctl"] }
+signal-hook = "0.3"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "latency"
+harness = false

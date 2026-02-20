@@ -1,0 +1,46 @@
+# Rust / Cargo
+/target/
+**/*.rs.bk
+# Cargo.lock is committed for binaries (reproducible builds)
+
+# Build artifacts
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python (leftover / local tools)
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Debug / local
+*.log
+*.tmp
+*.temp
+.cache/
+
+# Systemd / udev (optional: uncomment if these are generated)
+# /systemd/
+# /udev/

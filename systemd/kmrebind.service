@@ -1,0 +1,19 @@
+[Unit]
+Description=Keyboard to Mouse Button Remapper
+Documentation=file:///home/admin/Projects/LMBREBIND/README.md
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/path/to/LMBREBIND/target/release/kmrebind
+Restart=on-failure
+RestartSec=5
+
+# Security: run as user, not root
+User=%i
+
+# Optional: set PATH if needed
+# Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+
+[Install]
+WantedBy=default.target

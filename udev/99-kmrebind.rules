@@ -1,0 +1,17 @@
+# udev rules for kmrebind
+# This allows users in the 'input' group to access input devices and uinput
+#
+# Installation:
+#   sudo cp 99-kmrebind.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules
+#   sudo udevadm trigger
+#
+# Then add your user to the 'input' group:
+#   sudo usermod -aG input $USER
+#   (log out and back in for group changes to take effect)
+
+# Allow input group to access input devices
+KERNEL=="event*", GROUP="input", MODE="0664"
+
+# Allow input group to access uinput
+KERNEL=="uinput", GROUP="input", MODE="0664"

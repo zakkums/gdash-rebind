@@ -1,0 +1,328 @@
+Metadata-Version: 2.4
+Name: kmrebind
+Version: 1.0.0
+Summary: Kernel-level keyboard to mouse button remapper for rhythm games
+Author: kmrebind contributors
+License: MIT
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: End Users/Desktop
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: System :: Hardware :: Input Devices
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.1.0; extra == "dev"
+
+# kmrebind
+
+A kernel-level keyboard remapper for Linux that maps keyboard keys to mouse button clicks. Optimized for low latency and timing consistency, designed for rhythm games like Geometry Dash.
+
+## What It Does
+
+kmrebind reads raw keyboard events from `/dev/input/event*` and emits mouse button clicks via `/dev/uinput`. By default, it maps the `.` (dot) and `/` (slash) keys to the left mouse button (BTN_LEFT).
+
+**Key Features:**
+- Kernel-level operation (no X11/Wayland dependencies)
+- Exclusive keyboard grab (mapped keys don't type into the system)
+- Reference counting (both keys must be released before mouse button releases)
+- Zero artificial delays (optimized for rhythm games)
+- Automatic keyboard device detection
+- Graceful shutdown with cleanup
+
+## Safety Warnings
+
+⚠️ **IMPORTANT:**
+- This tool requires access to `/dev/input/event*` and `/dev/uinput`
+- It will grab your keyboard exclusively while running
+- The mapped keys (`.` and `/` by default) will NOT type into applications while the remapper is active
+- Other keys should work normally, but the exclusive grab may interfere with some applications
+- Always run in a terminal where you can easily stop it (Ctrl+C)
+- Do NOT run as root unless absolutely necessary
+
+## Requirements
+
+- Debian Linux (or compatible distribution)
+- Python 3.8 or higher
+- Access to `/dev/input/event*` and `/dev/uinput`
+- python-evdev library
+
+## Installation
+
+### 1. Install System Dependencies
+
+```bash
+sudo apt-get update
+sudo apt-get install python3-venv python3-pip
+```
+
+### 2. Setup udev Rules (Required for Non-Root Access)
+
+Copy the udev rules file:
+
+```bash
+sudo cp udev/99-kmrebind.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+Add your user to the `input` group:
+
+```bash
+sudo usermod -aG input $USER
+```
+
+**You must log out and log back in** for the group membership to take effect.
+
+### 3. Setup Project
+
+```bash
+# Clone or navigate to the project directory
+cd /path/to/LMBREBIND
+
+# Create virtual environment and install dependencies
+make setup
+
+# Or manually:
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+pip install -e .
+```
+
+## Usage
+
+### Basic Usage
+
+```bash
+# Activate virtual environment (if not already active)
+source venv/bin/activate
+
+# Run with defaults (maps KEY_DOT and KEY_SLASH)
+python -m kmrebind.cli
+
+# Or use the Makefile
+make run
+```
+
+### Command-Line Options
+
+```bash
+python -m kmrebind.cli [OPTIONS]
+
+Options:
+  --keys KEY1 KEY2    Key names to map (default: KEY_DOT KEY_SLASH)
+  --device PATH      Explicit keyboard device path (e.g., /dev/input/event3)
+  --verbose          Enable verbose logging
+  --dry-run          Print what would be emitted without creating uinput device
+  -h, --help         Show help message
+```
+
+### Examples
+
+```bash
+# Use default keys (KEY_DOT and KEY_SLASH)
+python -m kmrebind.cli
+
+# Map different keys
+python -m kmrebind.cli --keys KEY_SPACE KEY_ENTER
+
+# Specify a specific keyboard device
+python -m kmrebind.cli --device /dev/input/event3
+
+# Verbose output for debugging
+python -m kmrebind.cli --verbose
+
+# Dry run (test without creating uinput device)
+python -m kmrebind.cli --dry-run --verbose
+```
+
+## How to Identify Your Keyboard Device
+
+If you need to specify a device manually, you can list all input devices:
+
+```bash
+# List all input devices
+python3 -c "from evdev import list_devices, InputDevice; [print(f'{d.path}: {InputDevice(d).name}') for d in list_devices()]"
+
+# Or use evtest (if installed)
+evtest
+
+# Or check /dev/input/
+ls -la /dev/input/event*
+```
+
+The program will auto-detect keyboards by default, but you can override with `--device` if needed.
+
+## How to Stop
+
+Press `Ctrl+C` in the terminal where kmrebind is running. The program will:
+1. Release the keyboard grab
+2. Release the mouse button if still pressed
+3. Close the uinput device
+4. Exit cleanly
+
+## Troubleshooting
+
+### Permission Denied Errors
+
+**Problem:** `PermissionError` or `OSError: [Errno 13] Permission denied`
+
+**Solution:**
+1. Make sure you've installed the udev rules (see Installation section)
+2. Make sure you've added your user to the `input` group
+3. **Log out and log back in** after adding yourself to the group
+4. Verify group membership: `groups` (should show `input`)
+5. Verify device permissions: `ls -l /dev/input/event*` (should show `input` group)
+
+### No Keyboard Device Found
+
+**Problem:** `No keyboard devices found`
+
+**Solution:**
+1. Check if input devices exist: `ls /dev/input/event*`
+2. Try running with `--verbose` to see what devices are being checked
+3. Manually specify a device with `--device /dev/input/eventX`
+4. Make sure you have read permissions on the device
+
+### UInput Device Creation Failed
+
+**Problem:** `Failed to create uinput device`
+
+**Solution:**
+1. Check if `/dev/uinput` exists: `ls -l /dev/uinput`
+2. Make sure udev rules are installed and your user is in the `input` group
+3. Check if uinput module is loaded: `lsmod | grep uinput`
+4. If module is not loaded: `sudo modprobe uinput`
+
+### Keys Still Type Into System
+
+**Problem:** Mapped keys (`.` and `/`) still type characters
+
+**Solution:**
+- This should not happen if the keyboard is grabbed correctly
+- Make sure only one instance of kmrebind is running
+- Check with `--verbose` that the device is being grabbed
+- Try specifying the device explicitly with `--device`
+
+### Other Keys Don't Work
+
+**Problem:** All keys are blocked, not just mapped ones
+
+**Solution:**
+- This is expected behavior with exclusive grab
+- The exclusive grab prevents ALL keys from reaching the system
+- This is necessary to prevent mapped keys from typing
+- If you need other keys to work, you may need a different approach (not using exclusive grab)
+
+## Running as a Systemd Service (Optional)
+
+If you want kmrebind to run automatically, you can create a systemd user service:
+
+1. Edit `systemd/kmrebind.service` and update the paths
+2. Copy to your user systemd directory:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp systemd/kmrebind.service ~/.config/systemd/user/
+```
+
+3. Edit the service file to match your setup (paths, user, etc.)
+4. Enable and start:
+
+```bash
+systemctl --user enable kmrebind.service
+systemctl --user start kmrebind.service
+```
+
+5. Check status:
+
+```bash
+systemctl --user status kmrebind.service
+```
+
+**Note:** The default behavior is "temporary" mode (runs only while terminal is active). The systemd service is optional.
+
+## Development
+
+### Running Tests
+
+```bash
+make test
+# Or:
+source venv/bin/activate
+pytest tests/ -v
+```
+
+### Project Structure
+
+```
+LMBREBIND/
+├── src/
+│   └── kmrebind/
+│       ├── __init__.py
+│       ├── cli.py              # Command-line interface
+│       ├── config.py           # Configuration and key parsing
+│       ├── device_discovery.py # Keyboard device detection
+│       ├── event_loop.py       # Main event processing loop
+│       ├── key_mapper.py       # State machine for key mapping
+│       ├── uinput_emitter.py   # UInput device and event emission
+│       └── util.py             # Logging and signal handling
+├── tests/
+│   └── test_key_mapper.py      # Unit tests for state machine
+├── scripts/
+│   ├── setup.sh                # Setup script
+│   └── run.sh                  # Run script
+├── udev/
+│   └── 99-kmrebind.rules       # udev rules for permissions
+├── systemd/
+│   └── kmrebind.service        # Systemd service template
+├── Makefile                    # Build and run commands
+├── pyproject.toml              # Python project configuration
+├── requirements.txt            # Pinned dependencies
+└── README.md                   # This file
+```
+
+## Technical Details
+
+### How It Works
+
+1. **Device Discovery:** Scans `/dev/input/event*` for keyboard devices by checking for EV_KEY capability and typical keyboard keys
+2. **Exclusive Grab:** Grabs the keyboard device exclusively to prevent mapped keys from typing
+3. **Event Loop:** Reads keyboard events in a blocking loop
+4. **State Machine:** Maintains reference counting for mapped keys (both must be released before mouse button releases)
+5. **UInput Emission:** Emits BTN_LEFT press/release events via `/dev/uinput`
+
+### Latency Optimization
+
+- No sleeps, polling loops, or artificial delays
+- Direct kernel-level event handling
+- Synchronous event processing
+- Minimal Python overhead
+
+### Reference Counting
+
+The state machine uses reference counting to handle multiple mapped keys:
+- When the first mapped key is pressed → BTN_LEFT pressed
+- When additional mapped keys are pressed → BTN_LEFT stays pressed
+- When a mapped key is released → BTN_LEFT stays pressed if other keys are still pressed
+- When the last mapped key is released → BTN_LEFT released
+
+## License
+
+MIT License
+
+## Contributing
+
+Contributions are welcome! Please ensure:
+- Code follows the existing style
+- Tests pass
+- No new dependencies are added without justification
+- Documentation is updated
