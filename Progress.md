@@ -1,15 +1,16 @@
 # LMBREBIND – Progress
 
-Kernel-level keyboard→mouse remapper (Rust). This file tracks status and history.
+Kernel-level keyboard→mouse remapper (Rust). This file tracks status, roadmap, and history.
 
 ---
 
-## Status: **Complete**
+## Status: **Stable (roadmap in progress)**
 
 - **Implementation:** Rust-only; Python code removed.
-- **Build:** `make build` → `target/release/kmrebind`
+- **Build:** `make build` → `target/release/kmrebind` (release: LTO, codegen-units=1, strip).
 - **Run:** `make run` or `./target/release/kmrebind`
-- **Tests:** `make test` (cargo test, 7 unit tests)
+- **Tests:** `make test` (20 tests: 14 unit + 6 integration).
+- **Hot path:** Bitset + refcount in key_mapper; no HashSet in event loop; no global state in `process_key_event`.
 
 ---
 
@@ -21,23 +22,75 @@ Kernel-level keyboard→mouse remapper (Rust). This file tracks status and histo
 | cli | `src/cli.rs` | Args, wiring, signal setup |
 | config | `src/config.rs` | Key name → key code |
 | device_discovery | `src/device_discovery.rs` | Keyboard detection |
-| event_loop | `src/event_loop.rs` | Grab, read, dispatch, cleanup |
+| error | `src/error.rs` | Application error type |
+| event_loop | `src/event_loop.rs` | Grab, poll, read, dispatch, cleanup |
 | key_mapper | `src/key_mapper.rs` | State machine + tests |
 | uinput_emitter | `src/uinput_emitter.rs` | Virtual mouse/keyboard |
 | util | `src/util.rs` | Verbosity, shutdown flag, signals |
 
 ---
 
-## Cleanup (done)
+## Development roadmap
+
+Items below are ordered by impact and dependency. Check off as done.
+
+### 1. Error handling & types
+
+- [x] **1.1** Add `src/error.rs`: define `Error` enum (`DeviceNotFound`, `UInputFailed`, `NoKeyboards`, `InvalidKeys`, etc.) and implement `std::error::Error` + `Display`.
+- [x] **1.2** Replace `Result<T, String>` with `Result<T, Error>` in public APIs (device_discovery, uinput_emitter, event_loop, cli).
+- [x] **1.3** Manual impl; no extra dependencies.
+
+### 2. Shutdown responsiveness
+
+- [x] **2.1** Event loop: use `nix::poll` on keyboard device fd with 200 ms timeout.
+- [x] **2.2** When poll returns (timeout or events), check shutdown flag; when POLLIN, call `fetch_events()`.
+- [x] **2.3** evdev `Device::as_raw_fd()`; nix `poll` feature; `BorrowedFd::borrow_raw` for `PollFd::new`.
+
+### 3. Logging
+
+- [ ] **3.1** Add `log` + `env_logger` (or `tracing` + `tracing-subscriber`): replace ad-hoc `eprintln!` and `util::set_verbose` with log levels.
+- [ ] **3.2** Use `RUST_LOG=debug` (or `trace`) for verbose behaviour; `info` for normal messages; `warn`/`error` for failures.
+- [ ] **3.3** Remove or simplify `util::is_verbose()` once logging is in place.
+
+### 4. Config: key name coverage
+
+- [ ] **4.1** Option A: Use crate `string_to_input_event_codes` (or similar) for string→key code if available and compatible.
+- [ ] **4.2** Option B: Build a static map at startup from evdev `KeyCode` (e.g. iterate and use `Debug`/`format!("{:?}")` to get "KEY_DOT" and normalize).
+- [ ] **4.3** Document supported key names in README; add test that default keys and a few extras parse correctly.
+
+### 5. Tests & docs
+
+- [ ] **5.1** Unit test: `KeyMapper::is_mapped` returns true only for keys passed to `new`, false for others.
+- [ ] **5.2** README: add short **Performance** subsection (hot path: bitset + refcount; kernel I/O dominates latency; no HashSet in loop).
+- [ ] **5.3** Optional: integration test for `--dry-run` (exit 0, no device needed).
+
+### 6. API & modularization
+
+- [ ] **6.1** Expose a `run(options: RunOptions)` (or similar) in `lib.rs` that takes config struct (keys, device path, dry_run, verbose) for embedding or testing without CLI.
+- [ ] **6.2** Keep `main.rs` as thin wrapper: parse args → build options → call `kmrebind::run(options)`.
+
+### 7. Cleanup & polish
+
+- [ ] **7.1** Remove `#[allow(dead_code)]` where no longer needed (e.g. `default_key_names`, `get_active_keys` if used).
+- [ ] **7.2** Consider `clippy` in CI or Makefile (`cargo clippy -- -D warnings`).
+- [ ] **7.3** Optional: CHANGELOG.md for version history.
+
+---
+
+## Behaviour (current)
+
+- **Keys:** One or more keys can be mapped to BTN_LEFT. Default is KEY_DOT + KEY_SLASH (two keys for rhythm-game use). With a single key, press = mouse down, release = mouse up. With multiple keys, reference counting: button stays down until all mapped keys are released.
+- Exclusive grab; pass-through for other keys.
+- Graceful shutdown (SIGINT/SIGTERM); same udev rules.
+- Shutdown (Ctrl+C) is checked every 200 ms via `poll()` timeout, so exit does not require a key event.
+
+---
+
+## History / cleanup (done)
 
 - Removed Python package `src/kmrebind/`, tests `tests/`, `pyproject.toml`, `requirements.txt`, `scripts/`.
 - Makefile and README are Rust-only.
 - Systemd service uses Rust binary path.
-
----
-
-## Behaviour
-
-- Default: KEY_DOT, KEY_SLASH → BTN_LEFT.
-- Reference counting; exclusive grab; pass-through for other keys.
-- Graceful shutdown (SIGINT/SIGTERM); same udev rules.
+- Hot path: removed HashSet from event loop; added `KeyMapper::is_mapped`; moved verbose logging out of `process_key_event`; release profile (LTO, codegen-units=1, strip).
+- Error type (`src/error.rs`); shutdown responsiveness via `nix::poll` (200 ms).
+- Benchmarks: one key one click (~56 ns), two keys two independent clicks (~74 ns); no chord/rhythm benchmark.

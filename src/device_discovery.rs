@@ -1,5 +1,6 @@
 //! Keyboard device discovery and selection.
 
+use crate::error::Error;
 use evdev::{Device, KeyCode};
 use std::path::Path;
 use std::path::PathBuf;
@@ -11,9 +12,6 @@ pub fn find_keyboard_devices() -> Vec<(PathBuf, Device)> {
         if is_likely_keyboard(&device) {
             keyboards.push((path, device));
         }
-    }
-    if keyboards.is_empty() {
-        eprintln!("warning: list_devices returned no keyboards. Check permissions (input group, udev rules).");
     }
     keyboards
 }
@@ -44,26 +42,22 @@ fn is_likely_keyboard(device: &Device) -> bool {
 }
 
 /// Select keyboard: by explicit path or auto-detect (first alphabetically by path).
-pub fn select_keyboard_device(device_path: Option<&str>) -> Result<Device, String> {
+pub fn select_keyboard_device(device_path: Option<&str>) -> Result<Device, Error> {
     if let Some(path) = device_path {
         if !Path::new(path).exists() {
-            return Err(format!("Device path does not exist: {}", path));
+            return Err(Error::DeviceNotFound(path.to_string()));
         }
-        let device = Device::open(path).map_err(|e| format!("Failed to open {}: {}", path, e))?;
-        eprintln!("Using specified device: {:?} ({})", device.name(), path);
+        let device = Device::open(path).map_err(|e| Error::OpenDevice {
+            path: path.to_string(),
+            source: e,
+        })?;
         return Ok(device);
     }
     let mut keyboards = find_keyboard_devices();
     if keyboards.is_empty() {
-        return Err(
-            "No keyboard devices found. Check: groups (input), udev rules, --device /dev/input/eventX".into(),
-        );
+        return Err(Error::NoKeyboards);
     }
     keyboards.sort_by(|a, b| a.0.cmp(&b.0));
-    let (path, device) = keyboards.remove(0);
-    eprintln!("Auto-selected keyboard: {:?} ({:?})", device.name(), path);
-    if !keyboards.is_empty() {
-        eprintln!("Found {} keyboard(s), using: {:?}", keyboards.len() + 1, path);
-    }
+    let (_path, device) = keyboards.remove(0);
     Ok(device)
 }

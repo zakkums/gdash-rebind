@@ -1,5 +1,6 @@
 //! Uinput device creation and mouse/keyboard event emission.
 
+use crate::error::Error;
 use evdev::uinput::VirtualDevice;
 use evdev::{AttributeSet, Device, InputEvent, KeyCode};
 
@@ -13,23 +14,17 @@ pub struct UInputEmitter {
 }
 
 impl UInputEmitter {
-    pub fn new(keyboard_device: Option<&Device>, dry_run: bool) -> Result<Self, String> {
+    pub fn new(keyboard_device: Option<&Device>, dry_run: bool) -> Result<Self, Error> {
         let mut uinput_mouse = None;
         let mut uinput_keyboard = None;
         if !dry_run {
             let mouse = create_mouse_device()?;
-            eprintln!("Created uinput virtual mouse device");
             uinput_mouse = Some(mouse);
             if let Some(kb) = keyboard_device {
                 if let Ok(kbd) = create_keyboard_device(kb) {
                     uinput_keyboard = Some(kbd);
-                    eprintln!("Created uinput virtual keyboard for pass-through");
-                } else {
-                    eprintln!("warning: Could not create virtual keyboard; non-mapped keys will not pass through");
                 }
             }
-        } else {
-            eprintln!("Dry run: no uinput devices created");
         }
         Ok(Self {
             dry_run,
@@ -89,27 +84,27 @@ impl UInputEmitter {
     }
 }
 
-fn create_mouse_device() -> Result<VirtualDevice, String> {
+fn create_mouse_device() -> Result<VirtualDevice, Error> {
     let mut keys = AttributeSet::<KeyCode>::new();
     keys.insert(KeyCode::BTN_LEFT);
     VirtualDevice::builder()
-        .map_err(|e: std::io::Error| e.to_string())?
+        .map_err(|e: std::io::Error| Error::UInputFailed(e.to_string()))?
         .name("kmrebind-virtual-mouse")
         .with_keys(&keys)
-        .map_err(|e: std::io::Error| e.to_string())?
+        .map_err(|e: std::io::Error| Error::UInputFailed(e.to_string()))?
         .build()
-        .map_err(|e: std::io::Error| e.to_string())
+        .map_err(|e: std::io::Error| Error::UInputFailed(e.to_string()))
 }
 
-fn create_keyboard_device(device: &Device) -> Result<VirtualDevice, String> {
-    let keys = device
-        .supported_keys()
-        .ok_or_else(|| "Keyboard has no supported keys".to_string())?;
+fn create_keyboard_device(device: &Device) -> Result<VirtualDevice, Error> {
+    let keys = device.supported_keys().ok_or_else(|| {
+        Error::UInputFailed("Keyboard has no supported keys".to_string())
+    })?;
     VirtualDevice::builder()
-        .map_err(|e: std::io::Error| e.to_string())?
+        .map_err(|e: std::io::Error| Error::UInputFailed(e.to_string()))?
         .name("kmrebind-virtual-keyboard")
         .with_keys(keys)
-        .map_err(|e: std::io::Error| e.to_string())?
+        .map_err(|e: std::io::Error| Error::UInputFailed(e.to_string()))?
         .build()
-        .map_err(|e: std::io::Error| e.to_string())
+        .map_err(|e: std::io::Error| Error::UInputFailed(e.to_string()))
 }

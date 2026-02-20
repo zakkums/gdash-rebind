@@ -128,6 +128,19 @@ mod tests {
         [KeyCode::KEY_DOT, KeyCode::KEY_SLASH].into_iter().collect()
     }
 
+    /// Single-key mode: only one key is mapped; press/release directly controls mouse button.
+    #[test]
+    fn single_key_mapping_only_one_key_mapped() {
+        let one_key: HashSet<KeyCode> = [KeyCode::KEY_SPACE].into_iter().collect();
+        let mut mapper = KeyMapper::new(one_key);
+        assert!(mapper.is_mapped(KeyCode::KEY_SPACE));
+        assert!(!mapper.is_mapped(KeyCode::KEY_DOT));
+        assert!(mapper.process_key_event(KeyCode::KEY_SPACE, true));
+        assert!(mapper.get_mouse_button_state());
+        assert!(mapper.process_key_event(KeyCode::KEY_SPACE, false));
+        assert!(!mapper.get_mouse_button_state());
+    }
+
     #[test]
     fn single_key_press_release() {
         let mut mapper = KeyMapper::new(mapped_keys());

@@ -4,12 +4,12 @@ A kernel-level keyboard remapper for Linux that maps keyboard keys to mouse butt
 
 ## What It Does
 
-kmrebind reads raw keyboard events from `/dev/input/event*` and emits mouse button clicks via `/dev/uinput`. By default, it maps the `.` (dot) and `/` (slash) keys to the left mouse button (BTN_LEFT).
+kmrebind reads raw keyboard events from `/dev/input/event*` and emits mouse button clicks via `/dev/uinput`. You can map **one or more** keys to the left mouse button (BTN_LEFT). With one key: press = mouse down, release = mouse up. With multiple keys: the button stays down until **all** mapped keys are released (reference counting). Default: `.` (KEY_DOT) and `/` (KEY_SLASH) for a two-key setup used with some rhythm games.
 
 **Key Features:**
 - Kernel-level operation (no X11/Wayland dependencies)
 - Exclusive keyboard grab (mapped keys don't type into the system)
-- Reference counting (both keys must be released before mouse button releases)
+- One or more keys → one mouse button (reference counting when multiple keys)
 - Zero artificial delays (optimized for rhythm games)
 - Automatic keyboard device detection
 - Graceful shutdown with cleanup
@@ -71,7 +71,7 @@ make run
 # Or: ./target/release/kmrebind
 ```
 
-Defaults: map KEY_DOT and KEY_SLASH to left mouse button.
+Defaults: map KEY_DOT and KEY_SLASH to left mouse button (two keys). Use a single key for simple press/release.
 
 ### Command-Line Options
 
@@ -79,7 +79,7 @@ Defaults: map KEY_DOT and KEY_SLASH to left mouse button.
 ./target/release/kmrebind [OPTIONS]
 
 Options:
-  --keys KEY1 KEY2    Key names to map (default: KEY_DOT KEY_SLASH)
+  --keys KEY [KEY ...]   One or more key names (default: KEY_DOT KEY_SLASH)
   --device PATH       Explicit keyboard device path (e.g., /dev/input/event3)
   --verbose           Enable verbose logging
   --dry-run           Print what would be emitted without creating uinput device
@@ -89,10 +89,13 @@ Options:
 ### Examples
 
 ```bash
-# Default keys (KEY_DOT, KEY_SLASH)
+# Default: two keys (KEY_DOT, KEY_SLASH) for rhythm game style
 ./target/release/kmrebind
 
-# Map different keys
+# Single key: press = click, release = release
+./target/release/kmrebind --keys KEY_SPACE
+
+# Map two different keys
 ./target/release/kmrebind --keys KEY_SPACE KEY_ENTER
 
 # Specify keyboard device
@@ -172,8 +175,8 @@ make test
 # Or: cargo test
 ```
 
-- **Unit tests:** Key mapper state machine (7 tests), config key parsing (6 tests).
-- **Integration tests:** CLI `--help`, invalid `--device`, invalid `--keys`, unknown flags (5 tests).
+- **Unit tests:** Key mapper state machine (8 tests), config key parsing (6 tests).
+- **Integration tests:** CLI `--help`, invalid `--device`, invalid `--keys`, unknown flags, single-key (6 tests).
 
 ### Benchmarks (quality and delay)
 
@@ -182,15 +185,16 @@ make bench
 # Or: cargo bench
 ```
 
-Benchmarks measure the hot path (key_mapper) in release build:
+Benchmarks measure the hot path (key_mapper) in release build. We benchmark **one key, one click** (press + release) and **two keys, two independent clicks** (key1 press/release, key2 press/release), not chord/rhythm.
 
 | Benchmark | Typical result |
 |-----------|----------------|
-| `process_key_event` (press) | ~1.2 ns per call |
-| `process_key_event` (release) | ~1.2 ns per call |
-| Full cycle (press dot, slash, release both) | ~84 ns per “click” |
+| One key, one click (press + release) | ~56 ns per click |
+| Two keys, two independent clicks (4 events) | ~74 ns |
+| `process_key_event` (press) | ~0.3 ns per call |
+| `process_key_event` (release) | ~0.5 ns per call |
 
-The hot path uses a bitset + refcount (no hashing or allocation). In-process handling is ~1–2 ns per key event; a full click (4 events) is ~84 ns. Kernel I/O (evdev read + uinput write) dominates real-world latency.
+The hot path uses a bitset + refcount (no hashing or allocation). In-process handling is sub-nanosecond per key event; one click (2 events) is ~56 ns. Kernel I/O (evdev read + uinput write) dominates real-world latency.
 
 ### Project Structure
 
@@ -201,6 +205,7 @@ LMBREBIND/
 │   ├── cli.rs
 │   ├── config.rs
 │   ├── device_discovery.rs
+│   ├── error.rs
 │   ├── event_loop.rs
 │   ├── key_mapper.rs
 │   ├── uinput_emitter.rs
@@ -223,8 +228,8 @@ LMBREBIND/
 
 - **Device discovery:** Scans `/dev/input/event*` for keyboards (EV_KEY + typical keys).
 - **Exclusive grab:** Prevents mapped keys from typing.
-- **Event loop:** Blocking read, reference-counted state machine, BTN_LEFT and pass-through via uinput.
-- **Latency:** No sleeps or polling; direct evdev/uinput; minimal overhead.
+- **Event loop:** `poll()` on keyboard fd with 200 ms timeout so Ctrl+C is checked without waiting for a key; reference-counted state machine; BTN_LEFT and pass-through via uinput.
+- **Latency:** Hot path is bitset + refcount; no HashSet in loop; kernel I/O dominates real-world latency.
 
 ## License
 

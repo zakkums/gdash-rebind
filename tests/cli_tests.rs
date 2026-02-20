@@ -58,3 +58,19 @@ fn cli_default_keys_parsed() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("Mapped keys") || stderr.contains("KEY_DOT") || stderr.contains("does not exist") || stderr.contains("Failed to open"));
 }
+
+#[test]
+fn cli_single_key_accepted() {
+    // Single key is valid; should get past key parsing and fail at device open
+    let out = bin()
+        .arg("--keys")
+        .arg("KEY_SPACE")
+        .arg("--device")
+        .arg("/dev/input/nonexistent_99999")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("Mapped keys") || stderr.contains("KEY_SPACE"));
+    assert!(stderr.contains("does not exist") || stderr.contains("Failed to open"));
+    assert_eq!(out.status.code(), Some(1));
+}
