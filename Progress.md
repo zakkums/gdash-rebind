@@ -9,8 +9,8 @@ Kernel-level keyboard→mouse remapper (Rust). This file tracks status, roadmap,
 - **Implementation:** Rust-only; Python code removed.
 - **Build:** `make build` → `target/release/kmrebind` (release: LTO, codegen-units=1, strip).
 - **Run:** `make run` or `./target/release/kmrebind`
-- **Tests:** `make test` (23 tests: 16 unit + 7 integration).
-- **Hot path:** Bitset + refcount in key_mapper; no HashSet in event loop; no global state in `process_key_event`.
+- **Tests:** `make test` (27 tests: 20 unit + 7 integration).
+- **Hot path:** Bitset + refcount in key_mapper; no HashSet in event loop; no global state in `process_key_event`. Event loop calls `process_key_event` only (returns `Option<bool>`: `None` = not mapped, `Some(state_changed)` = mapped), so one bitset lookup per event instead of two.
 
 ---
 

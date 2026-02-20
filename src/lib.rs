@@ -41,7 +41,6 @@ pub fn run(options: RunOptions) -> Result<(), Error> {
     )?;
 
     uinput_emitter.cleanup();
-    key_mapper.reset();
     log::info!("kmrebind stopped");
     Ok(())
 }

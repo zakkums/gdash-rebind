@@ -14,6 +14,16 @@ use std::os::fd::AsRawFd;
 /// Poll timeout in ms; shutdown is checked at least this often.
 const POLL_TIMEOUT_MS: u16 = 200;
 
+/// Convert evdev key value to press/release. 0 = release, 1 = press, 2 = repeat (treat as press).
+/// Returns None for other values (e.g. 3+).
+pub(crate) fn key_value_to_press_release(value: i32) -> Option<bool> {
+    match value {
+        0 => Some(false),
+        1 | 2 => Some(true),
+        _ => None,
+    }
+}
+
 pub fn run(
     keyboard_device: &mut Device,
     key_mapper: &mut KeyMapper,
@@ -67,14 +77,12 @@ fn process_event(
     uinput_emitter: &mut UInputEmitter,
 ) {
     if let EventSummary::Key(_, key_code, value) = event.destructure() {
-        let is_press = value == 1 || value == 2;
-        let is_release = value == 0;
-        if !is_press && !is_release {
-            return;
-        }
-        if key_mapper.is_mapped(key_code) {
-            let state_changed = key_mapper.process_key_event(key_code, is_press);
-            if state_changed {
+        let is_press = match key_value_to_press_release(value) {
+            Some(p) => p,
+            None => return,
+        };
+        match key_mapper.process_key_event(key_code, is_press) {
+            Some(true) => {
                 let pressed = key_mapper.get_mouse_button_state();
                 if pressed {
                     uinput_emitter.emit_button_press();
@@ -83,8 +91,8 @@ fn process_event(
                 }
                 log::debug!("Mouse button: {}", if pressed { "PRESS" } else { "RELEASE" });
             }
-        } else {
-            uinput_emitter.emit_key_event(key_code, value);
+            Some(false) => {}
+            None => uinput_emitter.emit_key_event(key_code, value),
         }
     }
 }
@@ -103,4 +111,18 @@ fn cleanup(
         uinput_emitter.emit_button_release();
     }
     key_mapper.reset();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::key_value_to_press_release;
+
+    #[test]
+    fn key_value_parsing() {
+        assert_eq!(key_value_to_press_release(0), Some(false));
+        assert_eq!(key_value_to_press_release(1), Some(true));
+        assert_eq!(key_value_to_press_release(2), Some(true));
+        assert_eq!(key_value_to_press_release(3), None);
+        assert_eq!(key_value_to_press_release(-1), None);
+    }
 }

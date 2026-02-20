@@ -65,13 +65,15 @@ impl KeyMapper {
         code < MAX_KEY && bitset_get(&self.mapped, code)
     }
 
-    /// Process a key event. Returns true if mouse button state changed.
-    /// Hot path: no global state, no allocation, no hashing.
+    /// Process a key event.
+    /// Returns `None` if key is not mapped (caller should pass through to uinput).
+    /// Returns `Some(state_changed)` if mapped; `state_changed` is true when mouse button state changed.
+    /// Hot path: single bitset lookup for mapped check, no allocation, no hashing.
     #[inline(always)]
-    pub fn process_key_event(&mut self, key_code: KeyCode, is_press: bool) -> bool {
+    pub fn process_key_event(&mut self, key_code: KeyCode, is_press: bool) -> Option<bool> {
         let code = key_code.0;
         if code >= MAX_KEY || !bitset_get(&self.mapped, code) {
-            return false;
+            return None;
         }
         let was_pressed = bitset_get(&self.pressed, code);
         let mut state_changed = false;
@@ -93,7 +95,7 @@ impl KeyMapper {
                 state_changed = true;
             }
         }
-        state_changed
+        Some(state_changed)
     }
 
     #[inline(always)]
@@ -132,9 +134,9 @@ mod tests {
         let mut mapper = KeyMapper::new(one_key);
         assert!(mapper.is_mapped(KeyCode::KEY_SPACE));
         assert!(!mapper.is_mapped(KeyCode::KEY_DOT));
-        assert!(mapper.process_key_event(KeyCode::KEY_SPACE, true));
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_SPACE, true), Some(true));
         assert!(mapper.get_mouse_button_state());
-        assert!(mapper.process_key_event(KeyCode::KEY_SPACE, false));
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_SPACE, false), Some(true));
         assert!(!mapper.get_mouse_button_state());
     }
 
@@ -153,10 +155,10 @@ mod tests {
     #[test]
     fn single_key_press_release() {
         let mut mapper = KeyMapper::new(mapped_keys());
-        assert!(mapper.process_key_event(KeyCode::KEY_DOT, true));
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_DOT, true), Some(true));
         assert!(mapper.get_mouse_button_state());
         assert_eq!(mapper.get_active_keys().len(), 1);
-        assert!(mapper.process_key_event(KeyCode::KEY_DOT, false));
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_DOT, false), Some(true));
         assert!(!mapper.get_mouse_button_state());
         assert_eq!(mapper.get_active_keys().len(), 0);
     }
@@ -164,15 +166,15 @@ mod tests {
     #[test]
     fn two_keys_reference_counting() {
         let mut mapper = KeyMapper::new(mapped_keys());
-        assert!(mapper.process_key_event(KeyCode::KEY_DOT, true));
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_DOT, true), Some(true));
         assert!(mapper.get_mouse_button_state());
-        assert!(!mapper.process_key_event(KeyCode::KEY_SLASH, true));
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_SLASH, true), Some(false));
         assert!(mapper.get_mouse_button_state());
         assert_eq!(mapper.get_active_keys().len(), 2);
-        assert!(!mapper.process_key_event(KeyCode::KEY_DOT, false));
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_DOT, false), Some(false));
         assert!(mapper.get_mouse_button_state());
         assert_eq!(mapper.get_active_keys().len(), 1);
-        assert!(mapper.process_key_event(KeyCode::KEY_SLASH, false));
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_SLASH, false), Some(true));
         assert!(!mapper.get_mouse_button_state());
         assert_eq!(mapper.get_active_keys().len(), 0);
     }
@@ -183,9 +185,9 @@ mod tests {
         mapper.process_key_event(KeyCode::KEY_DOT, true);
         mapper.process_key_event(KeyCode::KEY_SLASH, true);
         assert!(mapper.get_mouse_button_state());
-        assert!(!mapper.process_key_event(KeyCode::KEY_SLASH, false));
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_SLASH, false), Some(false));
         assert!(mapper.get_mouse_button_state());
-        assert!(mapper.process_key_event(KeyCode::KEY_DOT, false));
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_DOT, false), Some(true));
         assert!(!mapper.get_mouse_button_state());
     }
 
@@ -204,7 +206,7 @@ mod tests {
     fn unmapped_key_ignored() {
         let mut mapper = KeyMapper::new(mapped_keys());
         let initial = mapper.get_mouse_button_state();
-        assert!(!mapper.process_key_event(KeyCode::KEY_A, true));
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_A, true), None);
         assert_eq!(mapper.get_mouse_button_state(), initial);
     }
 
@@ -222,10 +224,27 @@ mod tests {
     #[test]
     fn double_press_same_key() {
         let mut mapper = KeyMapper::new(mapped_keys());
-        assert!(mapper.process_key_event(KeyCode::KEY_DOT, true));
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_DOT, true), Some(true));
         assert!(mapper.get_mouse_button_state());
-        assert!(!mapper.process_key_event(KeyCode::KEY_DOT, true));
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_DOT, true), Some(false));
         assert!(mapper.get_mouse_button_state());
         assert_eq!(mapper.get_active_keys().len(), 1);
+    }
+
+    #[test]
+    fn unmapped_key_release_ignored() {
+        let mut mapper = KeyMapper::new(mapped_keys());
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_A, false), None);
+        assert!(!mapper.get_mouse_button_state());
+    }
+
+    #[test]
+    fn double_release_same_key_no_op() {
+        let mut mapper = KeyMapper::new(mapped_keys());
+        mapper.process_key_event(KeyCode::KEY_DOT, true);
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_DOT, false), Some(true));
+        assert!(!mapper.get_mouse_button_state());
+        assert_eq!(mapper.process_key_event(KeyCode::KEY_DOT, false), Some(false));
+        assert!(!mapper.get_mouse_button_state());
     }
 }

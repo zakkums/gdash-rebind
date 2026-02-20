@@ -147,4 +147,13 @@ mod tests {
         assert!(codes.contains(&KeyCode::KEY_DOT));
         assert!(codes.contains(&KeyCode::KEY_SLASH));
     }
+
+    #[test]
+    fn parse_trims_whitespace() {
+        let names = vec!["  KEY_DOT  ".to_string(), "  SLASH  ".to_string()];
+        let codes = parse_key_names(&names);
+        assert_eq!(codes.len(), 2);
+        assert!(codes.contains(&KeyCode::KEY_DOT));
+        assert!(codes.contains(&KeyCode::KEY_SLASH));
+    }
 }
