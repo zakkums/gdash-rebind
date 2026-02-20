@@ -1,6 +1,5 @@
 //! Key name to key code parsing and default keys.
 
-use crate::util;
 use evdev::KeyCode;
 use std::collections::HashSet;
 
@@ -12,11 +11,9 @@ pub fn parse_key_names(key_names: &[String]) -> HashSet<KeyCode> {
         let normalized = name.trim().trim_start_matches("KEY_");
         if let Some(code) = key_name_to_code(normalized) {
             key_codes.insert(code);
-            if util::is_verbose() {
-                eprintln!("Mapped {} -> {:?}", name, code);
-            }
+            log::debug!("Mapped {} -> {:?}", name, code);
         } else {
-            eprintln!("warning: unknown key name '{}', skipping", name);
+            log::warn!("unknown key name '{}', skipping", name);
         }
     }
     key_codes
@@ -80,7 +77,6 @@ fn key_name_to_code(name: &str) -> Option<KeyCode> {
 }
 
 /// Default keys to map: KEY_DOT and KEY_SLASH.
-#[allow(dead_code)]
 pub fn default_key_names() -> Vec<String> {
     vec!["KEY_DOT".into(), "KEY_SLASH".into()]
 }
@@ -92,6 +88,15 @@ mod tests {
     #[test]
     fn parse_default_keys() {
         let names = vec!["KEY_DOT".to_string(), "KEY_SLASH".to_string()];
+        let codes = parse_key_names(&names);
+        assert_eq!(codes.len(), 2);
+        assert!(codes.contains(&KeyCode::KEY_DOT));
+        assert!(codes.contains(&KeyCode::KEY_SLASH));
+    }
+
+    #[test]
+    fn default_key_names_parse_to_dot_slash() {
+        let names = default_key_names();
         let codes = parse_key_names(&names);
         assert_eq!(codes.len(), 2);
         assert!(codes.contains(&KeyCode::KEY_DOT));

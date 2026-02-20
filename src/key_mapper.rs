@@ -85,14 +85,12 @@ impl KeyMapper {
                     state_changed = true;
                 }
             }
-        } else {
-            if was_pressed {
-                bitset_clear(&mut self.pressed, code);
-                self.pressed_count = self.pressed_count.saturating_sub(1);
-                if self.pressed_count == 0 && self.mouse_button_state {
-                    self.mouse_button_state = false;
-                    state_changed = true;
-                }
+        } else if was_pressed {
+            bitset_clear(&mut self.pressed, code);
+            self.pressed_count = self.pressed_count.saturating_sub(1);
+            if self.pressed_count == 0 && self.mouse_button_state {
+                self.mouse_button_state = false;
+                state_changed = true;
             }
         }
         state_changed
@@ -103,7 +101,6 @@ impl KeyMapper {
         self.mouse_button_state
     }
 
-    #[allow(dead_code)]
     pub fn get_active_keys(&self) -> HashSet<KeyCode> {
         self.mapped_list
             .iter()
@@ -139,6 +136,18 @@ mod tests {
         assert!(mapper.get_mouse_button_state());
         assert!(mapper.process_key_event(KeyCode::KEY_SPACE, false));
         assert!(!mapper.get_mouse_button_state());
+    }
+
+    /// is_mapped is true only for keys passed to new(), false for all others.
+    #[test]
+    fn is_mapped_only_for_configured_keys() {
+        let keys: HashSet<KeyCode> = [KeyCode::KEY_DOT, KeyCode::KEY_SLASH].into_iter().collect();
+        let mapper = KeyMapper::new(keys);
+        assert!(mapper.is_mapped(KeyCode::KEY_DOT));
+        assert!(mapper.is_mapped(KeyCode::KEY_SLASH));
+        assert!(!mapper.is_mapped(KeyCode::KEY_A));
+        assert!(!mapper.is_mapped(KeyCode::KEY_SPACE));
+        assert!(!mapper.is_mapped(KeyCode::KEY_ENTER));
     }
 
     #[test]

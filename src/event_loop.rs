@@ -7,6 +7,7 @@ use crate::uinput_emitter::UInputEmitter;
 use crate::util;
 use crate::util::ShutdownFlag;
 use evdev::{Device, EventSummary};
+use nix::errno::Errno;
 use nix::poll::{poll, PollFd, PollFlags};
 use std::os::fd::AsRawFd;
 
@@ -30,7 +31,7 @@ pub fn run(
         match poll(&mut poll_fds, POLL_TIMEOUT_MS) {
             Ok(0) => continue,
             Ok(_) => {
-                if poll_fds[0].revents().map_or(false, |r| r.contains(PollFlags::POLLIN)) {
+                if poll_fds[0].revents().is_some_and(|r| r.contains(PollFlags::POLLIN)) {
                     let events = match keyboard_device.fetch_events() {
                         Ok(iter) => iter,
                         Err(e) => {
@@ -44,10 +45,11 @@ pub fn run(
                 }
             }
             Err(e) => {
-                fetch_err = Some(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("poll: {}", e),
-                ));
+                // EINTR = interrupted by signal (e.g. Ctrl+C); treat as normal shutdown.
+                if e == Errno::EINTR {
+                    break;
+                }
+                fetch_err = Some(std::io::Error::other(format!("poll: {}", e)));
                 break;
             }
         }
@@ -79,9 +81,7 @@ fn process_event(
                 } else {
                     uinput_emitter.emit_button_release();
                 }
-                if util::is_verbose() {
-                    eprintln!("Mouse button: {}", if pressed { "PRESS" } else { "RELEASE" });
-                }
+                log::debug!("Mouse button: {}", if pressed { "PRESS" } else { "RELEASE" });
             }
         } else {
             uinput_emitter.emit_key_event(key_code, value);
@@ -95,11 +95,11 @@ fn cleanup(
     uinput_emitter: &mut UInputEmitter,
 ) {
     if let Err(e) = keyboard_device.ungrab() {
-        eprintln!("warning: Error releasing grab: {}", e);
+        log::warn!("Error releasing grab: {}", e);
     }
-    eprintln!("Released keyboard device grab");
+    log::info!("Released keyboard device grab");
     if key_mapper.get_mouse_button_state() {
-        eprintln!("Releasing mouse button on cleanup");
+        log::info!("Releasing mouse button on cleanup");
         uinput_emitter.emit_button_release();
     }
     key_mapper.reset();

@@ -81,7 +81,7 @@ Defaults: map KEY_DOT and KEY_SLASH to left mouse button (two keys). Use a singl
 Options:
   --keys KEY [KEY ...]   One or more key names (default: KEY_DOT KEY_SLASH)
   --device PATH       Explicit keyboard device path (e.g., /dev/input/event3)
-  --verbose           Enable verbose logging
+  --verbose           Enable debug-level logging (same as RUST_LOG=kmrebind=debug)
   --dry-run           Print what would be emitted without creating uinput device
   -h, --help          Show help message
 ```
@@ -175,8 +175,8 @@ make test
 # Or: cargo test
 ```
 
-- **Unit tests:** Key mapper state machine (8 tests), config key parsing (6 tests).
-- **Integration tests:** CLI `--help`, invalid `--device`, invalid `--keys`, unknown flags, single-key (6 tests).
+- **Unit tests:** Key mapper state machine (9 tests), config key parsing (7 tests).
+- **Integration tests:** CLI `--help`, invalid `--device`, invalid `--keys`, unknown flags, single-key, dry-run (7 tests).
 
 ### Benchmarks (quality and delay)
 
@@ -196,6 +196,11 @@ Benchmarks measure the hot path (key_mapper) in release build. We benchmark **on
 
 The hot path uses a bitset + refcount (no hashing or allocation). In-process handling is sub-nanosecond per key event; one click (2 events) is ~56 ns. Kernel I/O (evdev read + uinput write) dominates real-world latency.
 
+### Performance
+
+- **Hot path:** Bitset + refcount in `key_mapper`; no `HashSet` in the event loop; no allocation or global state in `process_key_event`.
+- **Latency:** In-process cost is sub-nanosecond per key event; end-to-end latency is dominated by kernel I/O (evdev read + uinput write).
+
 ### Project Structure
 
 ```
@@ -208,6 +213,7 @@ LMBREBIND/
 │   ├── error.rs
 │   ├── event_loop.rs
 │   ├── key_mapper.rs
+│   ├── options.rs       # RunOptions for lib API
 │   ├── uinput_emitter.rs
 │   └── util.rs
 ├── udev/

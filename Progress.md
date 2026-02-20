@@ -9,7 +9,7 @@ Kernel-level keyboard→mouse remapper (Rust). This file tracks status, roadmap,
 - **Implementation:** Rust-only; Python code removed.
 - **Build:** `make build` → `target/release/kmrebind` (release: LTO, codegen-units=1, strip).
 - **Run:** `make run` or `./target/release/kmrebind`
-- **Tests:** `make test` (20 tests: 14 unit + 6 integration).
+- **Tests:** `make test` (23 tests: 16 unit + 7 integration).
 - **Hot path:** Bitset + refcount in key_mapper; no HashSet in event loop; no global state in `process_key_event`.
 
 ---
@@ -25,6 +25,7 @@ Kernel-level keyboard→mouse remapper (Rust). This file tracks status, roadmap,
 | error | `src/error.rs` | Application error type |
 | event_loop | `src/event_loop.rs` | Grab, poll, read, dispatch, cleanup |
 | key_mapper | `src/key_mapper.rs` | State machine + tests |
+| options | `src/options.rs` | RunOptions for lib API |
 | uinput_emitter | `src/uinput_emitter.rs` | Virtual mouse/keyboard |
 | util | `src/util.rs` | Verbosity, shutdown flag, signals |
 
@@ -48,9 +49,9 @@ Items below are ordered by impact and dependency. Check off as done.
 
 ### 3. Logging
 
-- [ ] **3.1** Add `log` + `env_logger` (or `tracing` + `tracing-subscriber`): replace ad-hoc `eprintln!` and `util::set_verbose` with log levels.
-- [ ] **3.2** Use `RUST_LOG=debug` (or `trace`) for verbose behaviour; `info` for normal messages; `warn`/`error` for failures.
-- [ ] **3.3** Remove or simplify `util::is_verbose()` once logging is in place.
+- [x] **3.1** Add `log` + `env_logger`; replace `eprintln!` and `util::set_verbose` with log levels.
+- [x] **3.2** `--verbose` sets debug level for kmrebind; `RUST_LOG=debug` also works; `info`/`warn`/`error` for normal messages.
+- [x] **3.3** `util::is_verbose()` now uses `log::log_enabled!(log::Level::Debug)`.
 
 ### 4. Config: key name coverage
 
@@ -60,19 +61,19 @@ Items below are ordered by impact and dependency. Check off as done.
 
 ### 5. Tests & docs
 
-- [ ] **5.1** Unit test: `KeyMapper::is_mapped` returns true only for keys passed to `new`, false for others.
-- [ ] **5.2** README: add short **Performance** subsection (hot path: bitset + refcount; kernel I/O dominates latency; no HashSet in loop).
-- [ ] **5.3** Optional: integration test for `--dry-run` (exit 0, no device needed).
+- [x] **5.1** Unit test: `is_mapped_only_for_configured_keys`; `default_key_names_parse_to_dot_slash`.
+- [x] **5.2** README: **Performance** subsection added.
+- [x] **5.3** Integration test: `cli_dry_run_fails_at_device_not_at_uinput`.
 
 ### 6. API & modularization
 
-- [ ] **6.1** Expose a `run(options: RunOptions)` (or similar) in `lib.rs` that takes config struct (keys, device path, dry_run, verbose) for embedding or testing without CLI.
-- [ ] **6.2** Keep `main.rs` as thin wrapper: parse args → build options → call `kmrebind::run(options)`.
+- [x] **6.1** `RunOptions` in `src/options.rs`; `kmrebind::run(options) -> Result<(), Error>` in lib.
+- [x] **6.2** `main` → `cli::run()` → parse args → build `RunOptions` → `kmrebind::run(options)`.
 
 ### 7. Cleanup & polish
 
-- [ ] **7.1** Remove `#[allow(dead_code)]` where no longer needed (e.g. `default_key_names`, `get_active_keys` if used).
-- [ ] **7.2** Consider `clippy` in CI or Makefile (`cargo clippy -- -D warnings`).
+- [x] **7.1** Removed `#[allow(dead_code)]` from `get_active_keys`, `default_key_names` (used in tests).
+- [x] **7.2** `make clippy` runs `cargo clippy -- -D warnings`.
 - [ ] **7.3** Optional: CHANGELOG.md for version history.
 
 ---
@@ -94,3 +95,5 @@ Items below are ordered by impact and dependency. Check off as done.
 - Hot path: removed HashSet from event loop; added `KeyMapper::is_mapped`; moved verbose logging out of `process_key_event`; release profile (LTO, codegen-units=1, strip).
 - Error type (`src/error.rs`); shutdown responsiveness via `nix::poll` (200 ms).
 - Benchmarks: one key one click (~56 ns), two keys two independent clicks (~74 ns); no chord/rhythm benchmark.
+- Logging: `log` + `env_logger`; `--verbose` or `RUST_LOG=debug`; `make clippy`.
+- Lib API: `RunOptions`, `kmrebind::run(options)`; thin CLI.

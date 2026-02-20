@@ -74,3 +74,19 @@ fn cli_single_key_accepted() {
     assert!(stderr.contains("does not exist") || stderr.contains("Failed to open"));
     assert_eq!(out.status.code(), Some(1));
 }
+
+#[test]
+fn cli_dry_run_fails_at_device_not_at_uinput() {
+    // With --dry-run we still need a keyboard device; should fail at device open, not at uinput
+    let out = bin()
+        .arg("--dry-run")
+        .arg("--device")
+        .arg("/dev/input/nonexistent_dryrun")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("Mapped keys") || stderr.contains("KEY_DOT"));
+    assert!(stderr.contains("does not exist") || stderr.contains("Failed to open"));
+}

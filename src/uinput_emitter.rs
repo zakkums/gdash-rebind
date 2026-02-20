@@ -35,51 +35,49 @@ impl UInputEmitter {
 
     pub fn emit_button_press(&mut self) {
         if self.dry_run {
-            eprintln!("[DRY RUN] Would emit: BTN_LEFT PRESS");
+            log::debug!("[DRY RUN] Would emit: BTN_LEFT PRESS");
             return;
         }
         if let Some(ref mut dev) = self.uinput_mouse {
             let ev = InputEvent::new(EV_KEY, KeyCode::BTN_LEFT.0, 1);
             if let Err(e) = dev.emit(&[ev]) {
-                eprintln!("error: Failed to emit button press: {}", e);
+                log::error!("Failed to emit button press: {}", e);
             }
         }
     }
 
     pub fn emit_button_release(&mut self) {
         if self.dry_run {
-            eprintln!("[DRY RUN] Would emit: BTN_LEFT RELEASE");
+            log::debug!("[DRY RUN] Would emit: BTN_LEFT RELEASE");
             return;
         }
         if let Some(ref mut dev) = self.uinput_mouse {
             let ev = InputEvent::new(EV_KEY, KeyCode::BTN_LEFT.0, 0);
             if let Err(e) = dev.emit(&[ev]) {
-                eprintln!("error: Failed to emit button release: {}", e);
+                log::error!("Failed to emit button release: {}", e);
             }
         }
     }
 
     pub fn emit_key_event(&mut self, key_code: KeyCode, value: i32) {
         if self.dry_run {
-            eprintln!("[DRY RUN] Would emit key: {:?} = {}", key_code, value);
+            log::debug!("[DRY RUN] Would emit key: {:?} = {}", key_code, value);
             return;
         }
         if let Some(ref mut dev) = self.uinput_keyboard {
             let ev = InputEvent::new(EV_KEY, key_code.0, value);
             if let Err(e) = dev.emit(&[ev]) {
-                if crate::util::is_verbose() {
-                    eprintln!("warning: Failed to pass through key {:?}: {}", key_code, e);
-                }
+                log::debug!("Failed to pass through key {:?}: {}", key_code, e);
             }
         }
     }
 
     pub fn cleanup(&mut self) {
         if self.uinput_mouse.take().is_some() {
-            eprintln!("Closed uinput mouse device");
+            log::info!("Closed uinput mouse device");
         }
         if self.uinput_keyboard.take().is_some() {
-            eprintln!("Closed uinput keyboard device");
+            log::info!("Closed uinput keyboard device");
         }
     }
 }

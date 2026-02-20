@@ -1,15 +1,7 @@
 //! Command-line interface and main wiring.
 
-use crate::config::parse_key_names;
-use crate::device_discovery::select_keyboard_device;
 use crate::error::Error;
-use crate::event_loop::run as event_loop_run;
-use crate::key_mapper::KeyMapper;
-use crate::uinput_emitter::UInputEmitter;
-use crate::util;
 use clap::Parser;
-use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
 
 #[derive(clap::Parser)]
 #[command(name = "kmrebind", about = "Remap keyboard keys to mouse button at kernel level")]
@@ -34,13 +26,13 @@ pub struct Args {
 }
 
 fn print_error(e: &Error) {
-    eprintln!("error: {}", e);
+    log::error!("{}", e);
     match e {
         Error::NoKeyboards | Error::DeviceNotFound(_) | Error::OpenDevice { .. } => {
-            eprintln!("See README.md for udev rules and input group.");
+            log::error!("See README.md for udev rules and input group.");
         }
         Error::UInputFailed(_) => {
-            eprintln!("Make sure you have permissions to /dev/uinput");
+            log::error!("Make sure you have permissions to /dev/uinput");
         }
         _ => {}
     }
@@ -48,52 +40,17 @@ fn print_error(e: &Error) {
 
 pub fn run() -> i32 {
     let args = Args::parse();
-    util::set_verbose(args.verbose);
-    eprintln!("kmrebind starting...");
-
-    let mapped_keys = parse_key_names(&args.keys);
-    if mapped_keys.is_empty() {
-        print_error(&Error::InvalidKeys);
-        return 1;
-    }
-    eprintln!("Mapped keys: {:?} -> {:?}", args.keys, mapped_keys);
-
-    let mut keyboard_device = match select_keyboard_device(args.device.as_deref()) {
-        Ok(d) => d,
+    let options = crate::RunOptions {
+        keys: args.keys,
+        device_path: args.device,
+        dry_run: args.dry_run,
+        verbose: args.verbose,
+    };
+    match crate::run(options) {
+        Ok(()) => 0,
         Err(e) => {
             print_error(&e);
-            return 1;
+            1
         }
-    };
-
-    let mut uinput_emitter = match UInputEmitter::new(Some(&keyboard_device), args.dry_run) {
-        Ok(u) => u,
-        Err(e) => {
-            print_error(&e);
-            return 1;
-        }
-    };
-
-    let shutdown: util::ShutdownFlag = Arc::new(AtomicBool::new(false));
-    if let Err(e) = util::setup_signal_handlers(shutdown.clone()) {
-        eprintln!("warning: {}", Error::SignalHandler(e));
     }
-
-    let mut key_mapper = KeyMapper::new(mapped_keys.clone());
-
-    if let Err(e) = event_loop_run(
-        &mut keyboard_device,
-        &mut key_mapper,
-        &mut uinput_emitter,
-        &shutdown,
-    ) {
-        print_error(&e);
-        uinput_emitter.cleanup();
-        return 1;
-    }
-
-    uinput_emitter.cleanup();
-    key_mapper.reset();
-    eprintln!("kmrebind stopped");
-    0
 }
